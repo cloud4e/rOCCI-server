@@ -77,6 +77,8 @@ module OCCI
           compute.attributes.org!.opennebula!.compute!.bootloader = backend_object['TEMPLATE/BOOTLOADER'] if backend_object['TEMPLATE/BOOTLOADER']
           compute.attributes.org!.opennebula!.compute!.boot = backend_object['TEMPLATE/BOOT'] if backend_object['TEMPLATE/BOOT']
 
+          compute.attributes.org!.opennebula!.compute!.gid = backend_object.gid.to_s
+
           compute.check(@model)
 
           compute_set_state(backend_object, compute)
@@ -378,7 +380,7 @@ module OCCI
         # ---------------------------------------------------------------------------------------------------------------------
         def compute_delete(client, compute)
           backend_object=VirtualMachine.new(VirtualMachine.build_xml(@@location_cache[compute.id]), client)
-
+          delete_service(client,compute)
           rc = backend_object.finalize
           check_rc(rc)
           # TODO: VNC
@@ -415,6 +417,7 @@ module OCCI
         def compute_stop(client, compute, parameters)
           backend_object = VirtualMachine.new(VirtualMachine.build_xml(@@location_cache[compute.id]), client)
           # TODO: implement parameters when available in OpenNebula
+          delete_service(client,compute)
           case parameters
             when 'method="graceful"'
               OCCI::Log.debug("Trying to stop VM graceful")

@@ -250,6 +250,10 @@ module OCCI
                 OCCI::Log.debug("Deploying resource with title #{resource.title} in backend #{@backend.class.name}")
                 OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_DEPLOY, resource)
 
+                if category.type_identifier.end_with? "compute"
+                    @backend.handle_service(@client,resource)
+                end      
+
                 @locations << request.base_url + request.script_name + resource.location
                 @server.status 201
               end

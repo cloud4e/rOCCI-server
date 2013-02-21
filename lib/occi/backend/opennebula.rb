@@ -16,7 +16,7 @@ require 'occi/backend/manager'
 #require 'occi/extensions/Reservation'
 
 require 'occi/log'
-
+require 'pstore'
 require 'openssl'
 
 include OpenNebula
@@ -63,6 +63,7 @@ module OCCI
         @model = OCCI::Model.new
         @model.register_core
         @model.register_infrastructure
+        @model.register_files('etc/backend/opennebula/model/infrastructure/amqp', scheme)
         @model.register_files('etc/backend/opennebula/model', scheme)
         @model.register_files('etc/backend/opennebula/templates', scheme)
         OCCI::Backend::Manager.register_backend(OCCI::Backend::OpenNebula, OCCI::Backend::OpenNebula::OPERATIONS)
@@ -145,7 +146,7 @@ module OCCI
 
       # Generate a new OpenNebula client for the target User, if the username
       # is nil the Client is generated for the server_admin
-      # ussername:: _String_ Name of the User or token in form username:password
+      # ussername:: _String_ Name of the User
       # [return] _Client_
       def client(username=nil)
         expiration_time = @lock.synchronize {
@@ -158,11 +159,31 @@ module OCCI
           @token_expiration_time
         }
 
-        if username.match /(.*):(.*)/
-          token = username
-        else   
-          token = @server_auth.login_token(expiration_time, username)
+        @pstore = PStore.new(username.split(":").first)
+        @pstore.transaction do
+          @pstore['links']   ||= []
+          @pstore['mixins']  ||= []
+          @pstore['actions'] ||= []
         end
+
+        #register saved mixins and actions
+        @pstore.transaction(read_only=true) do
+          actions = @pstore['actions']
+
+          actions.each do |action|
+            @model.register(action)
+          end
+
+          mixins = @pstore['mixins']
+
+          mixins.each do |mixin|
+            @model.register(mixin)
+          end
+        end
+
+
+        #token = @server_auth.login_token(expiration_time, username)
+        token=username
 
         OpenNebula::Client.new(token, @endpoint)
       end
@@ -198,8 +219,15 @@ module OCCI
           :start        => :compute_start,
           :stop         => :compute_stop,
           :restart      => :compute_restart,
-          :suspend      => :compute_suspend
+          :suspend      => :compute_suspend,
+          :chgrp        => :compute_chgrp
       }
+
+      OPERATIONS["http://schemas.ogf.org/occi/infrastructure#amqplink"] = {
+          :link   => :amqplink_link,
+          :delete => :amqplink_delete,
+          :amqp_call => :amqplink_call
+      }     
 
       OPERATIONS["http://schemas.ogf.org/occi/infrastructure#network"] = {
 
@@ -259,8 +287,60 @@ module OCCI
         resource_template_register(client)
         os_template_register(client)
         compute_register_all_instances(client)
+
+        entities = []
+
+        @pstore.transaction(read_only=true) do
+          entities = @pstore['links']
+        end
+
+        entities.each do |entity|
+          #Link zu seiner Resource hinzufügen
+          add_actions_from_link(entity)
+          if add_link_to_resource(entity)
+            kind = @model.get_by_id(entity.kind)
+            kind.entities << entity
+          end
+          if kind
+             OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
+          end
+        end
+        
+
         network_register_all_instances(client)
         storage_register_all_instances(client)
+      end
+
+      def add_actions_from_link(link)
+        if link.mixins.any?
+          #has mixins
+
+          link.mixins.each do |key, value|
+            mixin = @model.get_by_id key
+            if mixin.actions.any?
+              mixin.actions.each do |key2, value2|
+                link.actions << key2
+              end
+            end
+            link.actions.uniq!
+          end
+        end
+      end
+
+      def add_link_to_resource(link)
+        source = link.source
+        kind = @model.get_by_location(source.rpartition('/').first + '/')
+        uuid = source.rpartition('/').last
+
+        resource = (kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Resource).first
+        if !resource.nil?
+          resource.links << link
+          true
+        else
+          #source does not exist
+          amqplink_delete(@pstore, link)
+          false
+        end
       end
 
       # ---------------------------------------------------------------------------------------------------------------------
@@ -281,6 +361,303 @@ module OCCI
           mixin   = OCCI::Core::Mixin.new(scheme, term, title, nil, related)
           @model.register(mixin)
         end
+      end
+
+      def store_mixin(mixin, delete = false)
+        @pstore.transaction do
+          @pstore['mixins'].delete_if { |res| res.type_identifier == mixin.type_identifier }
+          @pstore['mixins'] << mixin unless delete
+        end
+      end
+
+      def store_link(link, delete = false)
+        OCCI::Log.debug("### OpenNebula: Deploying link with id #{link.id}")
+        @pstore.transaction do
+          @pstore['links'].delete_if { |res| res.id == link.id }
+          @pstore['links'] << link unless delete
+        end
+      end
+
+      def store_action(action, delete = false)
+        @pstore.transaction do
+          @pstore['actions'].delete_if { |res| res.type_identifier == action.type_identifier }
+          @pstore['actions'] << action unless delete
+        end
+      end
+
+
+      def register_mixin(mixin)
+
+        #convert actions from occi 3.0.x to occi 2.5.x
+        actions = mixin.actions
+        mixin.actions = []
+        actions.each do |action|
+          mixin.actions << (action.scheme + action.term)
+        end
+
+        store_mixin mixin
+        @model.register(mixin)
+      end      
+
+      def unregister_mixin(mixin)
+        #search if mixin is in use
+        found_mixin = false
+
+        @model.get.kinds.each do |kind|
+          break if found_mixin
+          kind.entities.each do |entity|
+            if entity.mixins.select{|smixin| smixin == mixin.type_identifier}.any?
+              found_mixin = true
+              break
+            end
+          end
+        end
+
+        unless found_mixin
+          #unregister in Model
+          @model.categories.delete mixin.type_identifier
+          @model.locations.delete mixin.location
+          store_mixin mixin, true
+
+          mixin.actions.each do |action|
+            #unregister actions
+            action.type_identifier = (action.scheme + action.term)
+            @model.categories.delete action.type_identifier
+            #delete from pstore
+            store_action action, true
+          end
+        end
+      end
+
+      def register_action(action)
+        store_action action
+        @model.register(action)
+      end 
+
+      # ---------------------------------------------------------------------------------------------------------------------
+      def send_to_amqp(amqp_queue, resource, action, parameters)
+        OCCI::Log.debug("Delegating action to amqp_queue: [#{amqp_queue}]")
+
+        if @amqp_producer
+          path = resource.location + "?action=" + parameters[:action]
+
+          #alles ausser action und method
+          parameters.each do |key, value|
+            unless key.to_s == "action" || key.to_s == "method"
+              path += "&" + key.to_s + "=" + value.to_s
+            end
+          end
+
+          options = {
+              :routing_key  => amqp_queue,
+              :content_type => "application/occi+json",
+              :type         => "post",
+              :headers => {
+                  :path_info => path
+              }
+          }
+          collection   = OCCI::Collection.new
+          collection.actions << action
+
+
+
+          message = collection.to_json
+          @amqp_producer.send(message, options)
+          test = test
+        end
+      end
+
+      def amqplink_link(client, amqplink)
+        amqplink.id = UUIDTools::UUID.timestamp_create.to_s
+        store_link amqplink
+      end
+
+      def amqplink_delete(client, amqplink)
+        #link aus resource lösen und dann löschen
+        store_link amqplink, true
+      end
+
+      def amqplink_call(client, amqplink, parameters=nil)
+        #TODO Link muss angepasst werden
+        amqp_target = amqplink.target
+        queue       = amqplink.attributes.occi.amqplink.queue
+        action      = parameters["action"]
+        params      = parameters["parameters"]
+        params.delete(:action)
+        params.delete(:method)
+
+        raise "No Amqp Producer is set" unless @amqp_producer
+
+        path = amqplink.location + "?action=" + action.term
+
+        params.each do |key, value|
+          path += "&" + key.to_s + "=" + value.to_s
+        end
+
+        options = {
+            :routing_key  => queue,
+            :content_type => "application/occi+json",
+            :type         => "post",
+            :headers => {
+                :path_info => path
+            }
+        }
+        collection = OCCI::Collection.new
+        collection.actions << action
+        message = collection.to_json
+
+        @amqp_producer.send(message, options)
+        #TODO vergiss nicht das occi 2.5.16 gem mit den änderungen an dem parser -> link rel actions source target
+
+      end
+
+      def handle_service(client,compute)
+         OCCI::Log.debug("Checking VM #{compute.id} for service provider")
+
+         vm_object=nil
+         vm_id=-1
+         service_provider=nil
+
+         admin_token=attributes.info.rocci.backend.opennebula.admin+":"+attributes.info.rocci.backend.opennebula.password
+         admin_client = client(admin_token)
+
+         backend_vm_pool = OpenNebula::VirtualMachinePool.new(admin_client)
+         backend_vm_pool.info_all
+         backend_vm_pool.each do |backend_vm|
+           if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+               #we have to retrieve vm with admin right in order to modify it
+               backend_vm_pool_user = OpenNebula::VirtualMachinePool.new(client)
+               backend_vm_pool_user.info_all
+               user_has_access=false
+               backend_vm_pool_user.each do |backend_vm_user|
+                   if backend_vm_user.id==backend_vm.id
+                       user_has_access=true
+                       break
+                   end
+               end
+               if user_has_access
+                   vm_object=backend_vm
+                   vm_id=backend_vm.id
+                   service_provider=backend_vm['TEMPLATE/PROVIDER']
+                   break
+               end
+           end
+         end
+
+         if vm_object
+           if service_provider
+             OCCI::Log.debug("Found service provided by #{service_provider}")
+             group = OpenNebula::Group.new(OpenNebula::Group.build_xml(),admin_client);
+             group_name="service-"+compute.id
+             rc = group.allocate(group_name);
+             check_rc(rc)
+
+             user_pool=OpenNebula::UserPool.new(admin_client)
+             user_pool.info
+             provider_id=-1
+             user_pool.each do |user_element|
+               if user_element.name==service_provider
+                 provider_id=user_element.id
+                 break
+               end
+             end
+             if provider_id>=0
+
+               #change group of vm
+               rc = vm_object.chown(-1,group.id)
+               check_rc(rc)
+
+               acl=OpenNebula::Acl.new(OpenNebula::Acl.build_xml,admin_client)
+               check_rc(acl)
+
+               #give provider use rights for vm
+               new_acl=OpenNebula::Acl.parse_rule("##{provider_id} VM/##{vm_id} USE")
+               rc = acl.allocate(new_acl[0],new_acl[1],new_acl[2])
+               check_rc(rc)
+
+               #give provider use rights for the new group
+               new_acl=OpenNebula::Acl.parse_rule("##{provider_id} GROUP/##{group.id} USE")
+               rc = acl.allocate(new_acl[0],new_acl[1],new_acl[2])
+               check_rc(rc)
+
+
+             end
+           else
+             OCCI::Log.debug("No service VM")
+           end
+         else
+           OCCI::Log.debug("No running VM with occi id #{compute.id} found")
+         end
+
+      end
+
+      def delete_service(client,compute)
+          vm_object=nil
+          vm_id=-1
+          service_provider=nil
+
+
+          backend_vm_pool = OpenNebula::VirtualMachinePool.new(client)
+          backend_vm_pool.info_all
+          backend_vm_pool.each do |backend_vm|
+            if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+                vm_object=backend_vm
+                vm_id=backend_vm.id
+                service_provider=backend_vm['TEMPLATE/PROVIDER']
+                break
+            end
+          end
+
+          if service_provider
+              OCCI::Log.debug("Delete group and ACLs for service provided by #{service_provider}")
+              admin_token=attributes.info.rocci.backend.opennebula.admin+":"+attributes.info.rocci.backend.opennebula.password
+              admin_client = client(admin_token)
+
+              gid = vm_object.gid
+              group = OpenNebula::Group.new(OpenNebula::Group.build_xml(gid),admin_client)
+              group.delete
+
+              user_pool=OpenNebula::UserPool.new(admin_client)
+              user_pool.info
+              provider_id=-1
+              user_pool.each do |user_element|
+                if user_element.name==service_provider
+                  provider_id=user_element.id
+                  break
+                end
+              end
+              if provider_id>=0
+
+                acl_pool = OpenNebula::AclPool.new(admin_client)
+                acl_pool.info
+                acl_to_delete=OpenNebula::Acl.parse_rule("##{provider_id} VM/##{vm_id} USE")
+
+                acl_pool.each do |acl|
+                   if(acl_to_delete[0]==acl['USER'] && acl_to_delete[1]==acl['RESOURCE'] && acl_to_delete[2]==acl['RIGHTS']) then
+                     rc = acl.delete
+                     check_rc(rc)
+                     OCCI::Log.debug("Group and ACLs successful deleted")
+                   end
+                end
+              end
+           end
+      end
+
+      def compute_chgrp(client, compute, parameters)
+          vm_object=nil
+          backend_vm_pool = OpenNebula::VirtualMachinePool.new(client)
+          backend_vm_pool.info_all
+          backend_vm_pool.each do |backend_vm|
+          if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+              vm_object=backend_vm
+              break
+           end
+         end
+         if(vm_object)
+             gid=parameters[:gid].to_i
+             rc = vm_object.chown(-1,gid)
+             check_rc(rc)
+         end
       end
 
     end
