@@ -5,7 +5,7 @@ module OCCI
   module Frontend
     module Amqp
       class AmqpRequest < OCCI::Frontend::Base::BaseRequest
-        attr_reader :message_id, :type  #sollte in request_method umbenannt werden
+        attr_reader :auth, :message_id, :type  #sollte in request_method umbenannt werden
 
         # @param [String] payload content of the message
         # @param [Hash] metadata information about the message
@@ -39,6 +39,7 @@ module OCCI
           @type         = metadata.type
           @media_type   = metadata.content_type || "occi/text"
           @message_id   = metadata.message_id
+          @auth         = metadata.headers["auth"]
 
           @header = metadata.headers.inject({}) do |hash, keys|
             hash[keys[0].upcase] = keys[1]

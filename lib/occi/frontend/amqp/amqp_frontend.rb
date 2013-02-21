@@ -18,6 +18,8 @@ module OCCI
         def check_authorization(request)
           if request.env['HTTP_X_AUTH_TOKEN']
             username = @backend.get_username(request.env['HTTP_X_AUTH_TOKEN'], "KEYSTONE")
+          else if request.auth["username"]
+            return request.auth["username"]
           end
 
           username ||= 'anonymous'

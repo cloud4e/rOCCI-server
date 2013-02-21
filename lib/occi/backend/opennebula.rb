@@ -34,6 +34,7 @@ module OCCI
       EXPIRE_MARGIN = 300
 
       attr_reader :model
+      attr_accessor :amqp_producer
 
       def self.kind_definition
         kind = OCCI::Core::Kind.new('http://rocci.info/server/backend#', 'opennebula')
@@ -144,7 +145,7 @@ module OCCI
 
       # Generate a new OpenNebula client for the target User, if the username
       # is nil the Client is generated for the server_admin
-      # ussername:: _String_ Name of the User
+      # ussername:: _String_ Name of the User or token in form username:password
       # [return] _Client_
       def client(username=nil)
         expiration_time = @lock.synchronize {
@@ -157,7 +158,11 @@ module OCCI
           @token_expiration_time
         }
 
-        token = @server_auth.login_token(expiration_time, username)
+        if username.match /(.*):(.*)/
+          token = username
+        else   
+          token = @server_auth.login_token(expiration_time, username)
+        end
 
         OpenNebula::Client.new(token, @endpoint)
       end
