@@ -294,7 +294,7 @@ module OCCI
           entities = @pstore['links']
         end
 
-        entities.each do |entity|
+        entities.each do |entity|          
           #Link zu seiner Resource hinzufügen
           add_actions_from_link(entity)
           if add_link_to_resource(entity)
@@ -309,6 +309,33 @@ module OCCI
 
         network_register_all_instances(client)
         storage_register_all_instances(client)
+      end
+
+      def update_links(client)
+        entities = []
+
+        @pstore.transaction(read_only=true) do
+          entities = @pstore['links']
+        end
+
+        entities.each do |entity|
+          queue       = entity.attributes.occi.amqplink.queue
+          options = {
+            :routing_key  => queue,
+          }
+          message = "update_link"
+          @amqp_producer.send(message, options)
+
+          #Link zu seiner Resource hinzufügen
+          add_actions_from_link(entity)
+          if add_link_to_resource(entity)
+            kind = @model.get_by_id(entity.kind)
+            kind.entities << entity
+          end
+          if kind
+             OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
+          end
+        end
       end
 
       def add_actions_from_link(link)
@@ -334,7 +361,6 @@ module OCCI
 
         resource = (kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Resource).first
         if !resource.nil?
-          puts "ADD LINK "+link.inspect
           resource.links << link
           true
         else

@@ -130,6 +130,7 @@ module OCCI
             @server.status 200
           else
             OCCI::Log.debug('GET')
+            @backend.update_links(@client) 
             if request.path_info.end_with?('/')
               if request.path_info == '/'
                 kinds = @backend.model.get.kinds
