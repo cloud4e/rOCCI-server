@@ -334,6 +334,7 @@ module OCCI
 
         resource = (kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Resource).first
         if !resource.nil?
+          puts "ADD LINK "+link.inspect
           resource.links << link
           true
         else
@@ -467,8 +468,10 @@ module OCCI
         end
       end
 
-      def amqplink_link(client, amqplink)
-        amqplink.id = UUIDTools::UUID.timestamp_create.to_s
+      def amqplink_link(client, amqplink, update=false)
+        if !update
+          amqplink.id = UUIDTools::UUID.timestamp_create.to_s
+        end
         store_link amqplink
       end
 

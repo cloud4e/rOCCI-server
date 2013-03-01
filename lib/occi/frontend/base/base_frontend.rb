@@ -63,7 +63,7 @@ module OCCI
 
         # @describe tasks to be executed before the request is handled
         # @param [OCCI::Frontend::Base::BaseRequest] request
-        def before_execute(request)
+        def before_execute(request)          
           OCCI::Log.debug('### Check authorization ###')
           user = check_authorization(request)
 
@@ -181,7 +181,6 @@ module OCCI
           else
             OCCI::Log.debug('### POST request processing ...')
             category = @backend.model.get_by_location(request.path_info.rpartition('/').first + '/')
-
             if category.nil?
               OCCI::Log.debug("### No category found for request location #{request.path_info} ###")
               @server.status 404
@@ -219,19 +218,21 @@ module OCCI
 
               @request_collection.links.each do |link|
                 kind = @backend.model.get_by_id category.type_identifier
-
-                # if resource with ID already exists then return 409 Conflict
-                if kind.entities.select {|entity| entity.id == link.id}.any?
-                  @server.status 409
-                  return
-                end
-
+                
                 link.check @backend.model
 
-                OCCI::Log.debug("Link resource #{link.target} with #{link.source}")
-                OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_LINK, link)
+                # update resource if it already exists
+                if kind.entities.select {|entity| entity.id == link.id}.any?
+                  # update link if it already exists
+                  OCCI::Log.debug("Update link between #{link.target} and #{link.source}")
+                  OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_LINK, link, true)
+                else
+                  # otherwise store new one
+                  OCCI::Log.debug("Link resource #{link.target} with #{link.source}")
+                  OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_LINK, link)
 
-                @locations << request.base_url + request.script_name + link.location
+                  @locations << request.base_url + request.script_name + link.location
+                end
                 @server.status 201
               end
 
