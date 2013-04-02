@@ -427,7 +427,7 @@ module OCCI
               rc = backend_object.shutdown
             else # method="poweroff" or no method specified
               OCCI::Log.debug("Powering off VM")
-              rc = backend_object.shutdown
+              rc = backend_object.finalize
           end
           check_rc(rc)
         end
