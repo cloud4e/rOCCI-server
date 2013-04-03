@@ -377,6 +377,9 @@ module OCCI
 
       # ---------------------------------------------------------------------------------------------------------------------
       def os_template_register(client)
+        (@model.get.mixins.select { |mixin| mixin.related.select { |rel| rel.end_with? 'os_tpl' }.any? }).each do |tpl|
+            @model.unregister(tpl)
+        end
         backend_object_pool=TemplatePool.new(client)
         backend_object_pool.info_all
         backend_object_pool.each do |backend_object|
