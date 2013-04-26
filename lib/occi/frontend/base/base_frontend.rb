@@ -130,8 +130,8 @@ module OCCI
             @server.status 200
           else
             OCCI::Log.debug('GET')
-            @backend.update_links(@client) 
             if request.path_info.end_with?('/')
+              @backend.update_all_links(@client)
               if request.path_info == '/'
                 kinds = @backend.model.get.kinds
               else
@@ -155,8 +155,21 @@ module OCCI
               end
 
               OCCI::Log.info("### Listing entity with uuid #{uuid} ###")
-              @collection.resources = kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Resource
-              @collection.links = kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Link
+              if kind.entity_type == OCCI::Core::Resource
+                  resources=kind.entities.select { |entity| entity.id == uuid }
+                  if kind.term == "compute"
+                     OCCI::Log.debug("Update links of compute resources with uuid #{uuid}")
+                     @backend.update_links_of_compute_resources(@client,resources)
+                     resources=kind.entities.select { |entity| entity.id == uuid }
+                  end 
+                  @collection.resources = resources
+              elsif kind.entity_type == OCCI::Core::Link
+                  links = kind.entities.select { |entity| entity.id == uuid }
+                  OCCI::Log.debug("Update links with uuid #{uuid}")
+                  @backend.update_links(@client,links)
+                  links = kind.entities.select { |entity| entity.id == uuid }
+                  @collection.links = links                  
+              end
             end
             @server.status 200
           end
@@ -172,7 +185,7 @@ module OCCI
 
           if request.path_info == "/-/" or request.path_info == "/.well-known/org/ogf/occi/-/"
             OCCI::Log.info("## Creating user defined mixin ###")
-            raise "Mixin already exists!" if @backend.model.get(@request_collection).mixins.any?
+            #raise "Mixin already exists!" if @backend.model.get(@request_collection).mixins.any?
             @request_collection.actions.each do |action|
               @backend.register_action(action)
             end

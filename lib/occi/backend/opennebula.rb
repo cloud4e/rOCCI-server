@@ -311,30 +311,141 @@ module OCCI
         storage_register_all_instances(client)
       end
 
-      def update_links(client)
-        entities = []
+      #------------------------------------------------------------------------------------------------
+      #Tries to update all known amqp links
+      def update_all_links(client)
+         OCCI::Log.debug("Update all AMQP links")
+         links = []
+         @pstore.transaction(read_only=true) do
+           links = @pstore['links']
+         end
+         update_links(client,links)
+      end
 
-        @pstore.transaction(read_only=true) do
-          entities = @pstore['links']
-        end
+      #------------------------------------------------------------------------------------------------
+      #Tries to update all amqp links of the given array of compute resources
+      def update_links_of_compute_resources(client,computes)
+        computes.each do |compute|
+           links=[]
+           @pstore.transaction(read_only=true) do
+              links = @pstore['links']
+           end
+           links_of_resource=links.select {|link| link.source.rpartition('/').last == compute.id}
+           update_links(client,links_of_resource)            
+        end 
+      end
 
-        entities.each do |entity|
-          queue       = entity.attributes.occi.amqplink.queue
-          options = {
-            :routing_key  => queue,
-          }
-          message = "update_link"
-          @amqp_producer.send(message, options)
+      #------------------------------------------------------------------------------------------------
+      #Tries to update all amqp links given in the array links
+      def update_links(client,links)        
+        connection = AMQP.connection
+        links_waiting_for_reply=[]
+        links.each do |entity|         
+          if entity.attributes.has_key?("occi") && entity.attributes.occi.has_key?("amqplink") &&
+          entity.attributes.occi.amqplink.has_key?("queue") && entity.attributes.occi.amqplink.queue &&
+          entity.attributes.occi.amqplink.queue != ""
+             puts (entity.attributes.occi!.amqplink!.queue!).inspect
+             #If service_adapter is listening we request an update of the link attributes.
+             #In order to test if adapter is listening we test if queue exists. 
+             queue_name = entity.attributes.occi.amqplink.queue
+             channel  = AMQP::Channel.new(connection)
+             queue_tested=false
+             queue_exists=false            
+             channel.on_error do
+                queue_tested=true
+                queue_exists=true 
+             end
+          
+             queue=channel.queue(queue_name)          
+             #the block is only executed if queue did not already exist, otherwise an error occurs 
+             queue.status do |num_messages, num_consumers|            
+                OCCI::Log.debug("Queue "+queue_name+" does not exist")
+                queue.delete
+                queue_tested=true
+             end
 
-          #Link zu seiner Resource hinzufügen
-          add_actions_from_link(entity)
-          if add_link_to_resource(entity)
-            kind = @model.get_by_id(entity.kind)
-            kind.entities << entity
-          end
-          if kind
-             OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
-          end
+             #wait until we know if queue exists 
+             while !queue_tested
+             end
+
+             if queue_exists
+                channel2  = AMQP::Channel.new(connection)
+                OCCI::Log.debug("Queue "+queue_name+" exists")
+                reply_queue_name=queue_name+"-reply"
+                options = {
+                   :routing_key  => queue_name,
+                   :reply_to => reply_queue_name
+                }
+                message = "update_link"
+                reply_queue = channel2.queue(reply_queue_name, :exclusive => true, :auto_delete => true)
+
+   
+                reply_queue.subscribe do |header, payload|
+                   begin
+                      hash = Hashie::Mash.new(JSON.parse(payload))
+                      link_new=OCCI::Core::Link.new(hash.kind, hash.mixins, hash.attributes, hash.actions, hash.rel, hash.target, hash.source)
+                      link_new.check @model
+                      OCCI::Log.debug("Got updated link")
+                      reply_queue.delete
+                
+                      if !(entity.as_json.eql?(link_new.as_json))
+                         OCCI::Log.debug("Link changed to "+link_new.inspect)
+                         store_link link_new 
+                         #delete old link from resource... 
+                         del_link_from_resource(entity)
+                         #and add the new one                         
+                         add_actions_from_link(link_new)
+                         if add_link_to_resource(link_new)
+                            kind = @model.get_by_id(link_new.kind)
+                            kind.entities << link_new
+                         end
+                         if kind
+                            OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
+                         end
+                      else
+                         OCCI::Log.debug("Link not changed")
+                      end
+ 
+                      links_waiting_for_reply.delete  entity
+                   rescue => e
+                      puts e.backtrace
+                   end
+                end
+
+                @amqp_producer.send(message, options)
+                links_waiting_for_reply << entity
+          
+             else
+                #Link zu seiner Resource hinzufügen
+                #add_actions_from_link(entity)
+                #if add_link_to_resource(entity)
+                #   kind = @model.get_by_id(entity.kind)
+                #   kind.entities << entity
+                #end
+                #if kind
+                #   OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
+                #end
+             end
+          end #if
+        end #each
+        #timeout in seconds for waiting for replies
+        timeout=3
+        while !(links_waiting_for_reply.empty?) && timeout>0
+           sleep(1)
+           timeout=timeout-1
+        end 
+        if !(links_waiting_for_reply.empty?)
+            OCCI::Log.warn("Failed to update one or more links - timeout exceeded")
+            #links_waiting_for_reply.each do |entity|
+            #   add_actions_from_link(entity)
+            #   if add_link_to_resource(entity)
+            #      kind = @model.get_by_id(entity.kind)
+            #      kind.entities << entity
+            #   end
+            #   if kind
+            #      OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
+            #   end
+            #end 
         end
       end
 
@@ -352,7 +463,7 @@ module OCCI
             link.actions.uniq!
           end
         end
-      end
+      end      
 
       def add_link_to_resource(link)
         source = link.source
@@ -370,6 +481,18 @@ module OCCI
         end
       end
 
+      def del_link_from_resource(link)
+        source = link.source
+        kind = @model.get_by_location(source.rpartition('/').first + '/')
+        uuid = source.rpartition('/').last
+
+        resource = (kind.entities.select { |entity| entity.id == uuid } if kind.entity_type == OCCI::Core::Resource).first
+        if !resource.nil?
+          resource.links.delete_if{|item| item.id==link.id}
+        end
+      end
+ 
+      
       # ---------------------------------------------------------------------------------------------------------------------
       def resource_template_register(client)
         # currently not directly supported by OpenNebula
@@ -541,6 +664,12 @@ module OCCI
         @amqp_producer.send(message, options)
         #TODO vergiss nicht das occi 2.5.16 gem mit den änderungen an dem parser -> link rel actions source target
 
+      end
+ 
+      def next_message_id
+        @message_id  = 0 if @message_id.nil?
+        @message_id += 1
+        @message_id.to_s;
       end
 
       def handle_service(client,compute)

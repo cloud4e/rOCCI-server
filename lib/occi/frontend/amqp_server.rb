@@ -1,4 +1,5 @@
 require "amqp"
+require "amqp/extensions/rabbitmq"
 require "occi/occi_amqp/amqp_consumer"
 require "occi/occi_amqp/amqp_worker"
 require "occi/occi_amqp/amqp_producer"
@@ -20,6 +21,7 @@ module OCCI
 
         @identifier = identifier
         @frontend   = OCCI::Frontend::Amqp::AmqpFrontend.new()
+        @semaphore=Mutex.new
 
         start standalone
 
@@ -46,7 +48,7 @@ module OCCI
             channel  = AMQP::Channel.new(connection)
             worker   = OCCI::OCCI_AMQP::AmqpWorker.new(channel, self, @identifier)
             worker.start
-
+           
             @reply_producer = OCCI::OCCI_AMQP::AmqpProducer.new(channel, channel.default_exchange)
 
             @frontend.backend.amqp_producer = @reply_producer
@@ -83,8 +85,12 @@ module OCCI
       def handle_message(metadata, payload)
         log("debug", __LINE__, "Handle message: #{ payload }")
         begin
-          parse_message(metadata, payload)
-          @reply_producer.send(@response.generate_output, @response.reply_options)
+          Thread.new{
+             @semaphore.synchronize {
+                parse_message(metadata, payload)
+                @reply_producer.send(@response.generate_output, @response.reply_options)
+             }
+          }
         rescue Exception => e
           log("error", __LINE__, "Received a message get an Error: #{e.message} \n #{e.backtrace.join("\n")}")
         end

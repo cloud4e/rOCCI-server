@@ -13,8 +13,7 @@ module OCCI
 
       def send(message, options = {})
         log("debug", __LINE__, "Send AMQP Message: #{ message }")
-
-        @exchange.publish(message, options)
+        @exchange.publish(message, options)      
       end
 
       private
