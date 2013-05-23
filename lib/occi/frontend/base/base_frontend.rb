@@ -131,7 +131,7 @@ module OCCI
           else
             OCCI::Log.debug('GET')
             if request.path_info.end_with?('/')
-              @backend.update_all_links(@client)
+              #@backend.update_all_links(@client)
               if request.path_info == '/'
                 kinds = @backend.model.get.kinds
               else
