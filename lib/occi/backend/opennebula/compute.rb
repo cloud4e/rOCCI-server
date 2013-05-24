@@ -48,6 +48,8 @@ module OCCI
           compute_kind = @model.get_by_id("http://schemas.ogf.org/occi/infrastructure#compute")
 
           id = backend_object['TEMPLATE/OCCI_ID']
+          #for on version >= 4.0
+          id ||= backend_object['USER_TEMPLATE/OCCI_ID']
           id ||= self.generate_occi_id(compute_kind, backend_object.id.to_s)
 
           @@location_cache[id] = backend_object.id.to_s
@@ -58,6 +60,10 @@ module OCCI
           backend_object.each 'TEMPLATE/OCCI_MIXIN' do |mixin|
             compute.mixins << mixin.text
           end
+          backend_object.each 'USER_TEMPLATE/OCCI_MIXIN' do |mixin|
+            compute.mixins << mixin.text
+          end
+
           compute.mixins.uniq!
 
           compute.id    = id

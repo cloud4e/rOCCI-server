@@ -326,6 +326,18 @@ module OCCI
       #Tries to update all amqp links of the given array of compute resources
       def update_links_of_compute_resources(client,computes)
         computes.each do |compute|
+           #TEST
+           #backend_vm_pool = OpenNebula::VirtualMachinePool.new(client)
+           #backend_vm_pool.info_all
+           #backend_vm_pool.each do |backend_vm|
+           #  if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+           #    tpl = backend_vm['TEMPLATE']
+           #    puts tpl.class.name
+           #    puts tpl.inspect
+           #    backend_vm.add_element('TEMPLATE','NEW_ITEM' => 'TEST')
+           #  end
+           #end
+           #TEST ENDE
            links=[]
            @pstore.transaction(read_only=true) do
               links = @pstore['links']
@@ -344,7 +356,6 @@ module OCCI
           if entity.attributes.has_key?("occi") && entity.attributes.occi.has_key?("amqplink") &&
           entity.attributes.occi.amqplink.has_key?("queue") && entity.attributes.occi.amqplink.queue &&
           entity.attributes.occi.amqplink.queue != ""
-             puts (entity.attributes.occi!.amqplink!.queue!).inspect
              #If service_adapter is listening we request an update of the link attributes.
              #In order to test if adapter is listening we test if queue exists. 
              queue_name = entity.attributes.occi.amqplink.queue
@@ -405,7 +416,6 @@ module OCCI
                       else
                          OCCI::Log.debug("Link not changed")
                       end
- 
                       links_waiting_for_reply.delete  entity
                    rescue => e
                       puts e.backtrace
@@ -685,7 +695,7 @@ module OCCI
          backend_vm_pool = OpenNebula::VirtualMachinePool.new(admin_client)
          backend_vm_pool.info_all
          backend_vm_pool.each do |backend_vm|
-           if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+           if backend_vm['TEMPLATE/OCCI_ID']==compute.id || backend_vm['USER_TEMPLATE/OCCI_ID']==compute.id
                #we have to retrieve vm with admin right in order to modify it
                backend_vm_pool_user = OpenNebula::VirtualMachinePool.new(client)
                backend_vm_pool_user.info_all
@@ -809,7 +819,7 @@ module OCCI
           backend_vm_pool = OpenNebula::VirtualMachinePool.new(client)
           backend_vm_pool.info_all
           backend_vm_pool.each do |backend_vm|
-          if backend_vm['TEMPLATE/OCCI_ID']==compute.id
+          if backend_vm['TEMPLATE/OCCI_ID']==compute.id || backend_vm['USER_TEMPLATE/OCCI_ID']==compute.id
               vm_object=backend_vm
               break
            end
