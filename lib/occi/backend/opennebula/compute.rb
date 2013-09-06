@@ -364,17 +364,19 @@ module OCCI
         # ---------------------------------------------------------------------------------------------------------------------
         def compute_set_state(backend_object, compute)
           OCCI::Log.debug("current VM state is: #{backend_object.lcm_state_str}")
-          case backend_object.lcm_state_str
-            when "RUNNING" then
+          case backend_object.state_str
+            #when "RUNNING" then
+            when "ACTIVE"
               compute.attributes.occi!.compute!.state = "active"
               compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#stop http://schemas.ogf.org/occi/infrastructure/compute/action#restart http://schemas.ogf.org/occi/infrastructure/compute/action#suspend|
-            when "PROLOG", "BOOT", "SAVE_STOP", "SAVE_SUSPEND", "SAVE_MIGRATE", "MIGRATE", "PROLOG_MIGRATE", "PROLOG_RESUME", "LCM_INIT" then
+            #when "PROLOG", "BOOT", "SAVE_STOP", "SAVE_SUSPEND", "SAVE_MIGRATE", "MIGRATE", "PROLOG_MIGRATE", "PROLOG_RESUME", "LCM_INIT" then
+            when "INIT", "PENDING", "HOLD", "STOPPED", "DONE"
               compute.attributes.occi!.compute!.state = "inactive"
               compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#restart|
             when "SUSPENDED" then
               compute.attributes.occi!.compute!.state = "suspended"
               compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
-            when "FAIL" then
+            when "FAILED" then
               compute.attributes.occi!.compute!.state = "error"
               compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
             else
