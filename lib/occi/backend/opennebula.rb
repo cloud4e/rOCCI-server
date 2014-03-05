@@ -174,7 +174,10 @@ module OCCI
             @model.register(action)
           end
 
+         
+
           mixins = @pstore['mixins']
+
 
           mixins.each do |mixin|
             @model.register(mixin)
@@ -307,8 +310,8 @@ module OCCI
         end
         
 
-        network_register_all_instances(client)
-        storage_register_all_instances(client)
+        #network_register_all_instances(client)
+        #storage_register_all_instances(client)
       end
 
       #------------------------------------------------------------------------------------------------
@@ -654,6 +657,7 @@ module OCCI
         raise "No Amqp Producer is set" unless @amqp_producer
 
         path = amqplink.location + "?action=" + action.term
+
 
         params.each do |key, value|
           path += "&" + key.to_s + "=" + value.to_s
