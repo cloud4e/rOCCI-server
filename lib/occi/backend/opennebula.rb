@@ -444,7 +444,7 @@ module OCCI
         #timeout in seconds for waiting for replies
         timeout=3
         while !(links_waiting_for_reply.empty?) && timeout>0
-           sleep(1)
+           sleep(0.1)
            timeout=timeout-1
         end 
         if !(links_waiting_for_reply.empty?)
