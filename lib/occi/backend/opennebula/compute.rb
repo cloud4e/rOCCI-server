@@ -43,7 +43,7 @@ module OCCI
         def compute_parse_backend_object(client, backend_object)
 
           # get information on compute object from OpenNebula backend
-          backend_object.info
+          #backend_object.info
 
           compute_kind = @model.get_by_id("http://schemas.ogf.org/occi/infrastructure#compute")
 
@@ -132,7 +132,7 @@ module OCCI
           #  @model.get_by_id(kind).entities << compute
           #end
 
-          compute_parse_links(client, compute, backend_object)
+          #compute_parse_links(client, compute, backend_object)
 
           # register compute resource in entities of compute kind
           compute_kind.entities << compute unless compute_kind.entities.select { |entity| entity.id == compute.id }.any?
