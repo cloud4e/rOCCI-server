@@ -447,11 +447,11 @@ module OCCI
           # TODO: implement parameters when available in OpenNebula
           case parameters
             when "graceful"
-              rc = vm.reboot
+              rc = backend_object.reboot
             when "warm"
-              rc = vm.reboot
+              rc = backend_object.reboot
             else # "cold" or no parameter specified
-              rc = vm.resubmit
+              rc = backend_object.resubmit
           end
           check_rc(rc)
         end
