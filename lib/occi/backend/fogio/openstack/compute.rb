@@ -60,12 +60,14 @@ module OCCI
 
             flavor = client.flavors.get backend_object.attributes[:flavor]['id']
 
+            id = backend_object.attributes[:id]
+
             compute = OCCI::Core::Resource.new(kind.type_identifier)
+            compute.id = @uuid_matching[id]
             compute.mixins << 'http://openstack.org/occi/infrastructure#compute'
 
-            id = backend_object.attributes[:id]  #metadata
-
-            compute.id = @uuid_matching[id]
+            parse_metadata(compute, backend_object.metadata)
+            compute.mixins.uniq!
 
             if compute.id.nil? || compute.id.length <= 0
               compute.id = UUIDTools::UUID.timestamp_create.to_s
@@ -73,11 +75,7 @@ module OCCI
             end
 
             compute.title = backend_object.attributes[:name]
-            #compute.summary = #metadata
-            #
             compute.attributes.occi!.compute!.cores = flavor.attributes[:vcpus]
-            #compute.attributes.occi!.compute!.architecture = "x64" if backend_object['TEMPLATE/ARCHITECTURE'] == "x86_64"
-            #compute.attributes.occi!.compute!.architecture = "x86" if backend_object['TEMPLATE/ARCHITECTURE'] == "i686"
             compute.attributes.occi!.compute!.memory = flavor.attributes[:ram]
 
             compute.attributes.org!.openstack!.compute!.ephemeral   = flavor.attributes[:ephemeral]
@@ -90,6 +88,11 @@ module OCCI
             compute.attributes.org!.openstack!.compute!.accessIPv4  = backend_object.attributes[:accessIPv4].to_s if backend_object.attributes[:accessIPv4].to_s.length > 0
             compute.attributes.org!.openstack!.compute!.accessIPv6  = backend_object.attributes[:accessIPv6].to_s if backend_object.attributes[:accessIPv6].to_s.length > 0
 
+            unless backend_object.attributes[:addresses]['fixed'].nil?
+              compute.attributes.org!.openstack!.compute!.fixedIP     = backend_object.attributes[:addresses]['fixed'][0]['addr'].to_s unless backend_object.attributes[:addresses]['fixed'].empty?
+            end
+
+
             compute.check(@model)
 
             set_state backend_object, compute
@@ -97,13 +100,32 @@ module OCCI
             parse_links client, backend_object, compute
 
             kind.entities << compute unless kind.entities.select { |entity| entity.id == compute.id }.any?
-
           end
 
           def parse_links client, backend_object, compute
-            #network
+          end
 
-            #storage
+          def parse_metadata(compute, metadata)
+            metadata.each do |metadata|
+              value = metadata.attributes[:value]
+              key = metadata.attributes[:key]
+
+              if key[0, 'occi_attribute'.length] == 'occi_attribute'
+                attribute_keys = key['occi_attribute_'.length..-1].split('.')
+
+                if attribute_keys[0] == 'cloud4e'
+                  compute.mixins << 'http://cloud4e.de/occi/service#simulation'
+                  compute.mixins.uniq!
+                end
+
+                attribute = compute.attributes.send "#{attribute_keys.delete_at(0)}!"
+                last = attribute_keys.delete_at(-1)
+
+                attribute_keys.each {|attribute_key| attribute = attribute.send "#{attribute_key}!"}
+
+                attribute.send "#{last}=" ,value
+              end
+            end
           end
 
           def set_state(backend_object, compute)
@@ -137,30 +159,46 @@ module OCCI
             end
           end
 
-          def deploy(client, compute)
+          def deploy(client, compute, options = {})
             OCCI::Log.debug "Deploying #{compute.inspect}"
 
             compute.id = UUIDTools::UUID.timestamp_create.to_s
 
-            #simulation_id = compute.attributes.org.cloud4E.service.simulation.id;
-            simulation_id = ""
+            simulation_id = ''
 
-            image_ref = "05cb3f9f-0a60-46c8-8954-176047763aa5"
-            flavor_id = 1
+            image_ref = options[:default_image]
+            flavor_id = 2
 
             if(!simulation_id.nil? && simulation_id.to_s.length > 0)
               image_ref = simulation_id
             end
 
-            file = {"contents" => compute.id, "path" => "home/occi.info"}
+            storage_endpoint = Config.instance.amqp[:identifier].split('://').last
+            storage_endpoint = storage_endpoint.split('/').first
+            storage_endpoint = storage_endpoint.split(':').first
+
+            file_content = {
+                :compute_uuid => compute.id,
+                :storage_endpoint => storage_endpoint,
+                :endpoint => Config.instance.amqp[:identifier].split('amqp.occi.').last
+            }
+            meta_data    = {'occi_attribute_occi.core.id' => compute.id.to_s}
+
+            if compute.attributes.cloud4e!.service!.simulation!.identifier
+              identifier = compute.attributes.cloud4e!.service!.simulation!.identifier
+              file_content[:service_identifier] = identifier
+              meta_data['occi_attribute_cloud4e.service.simulation.identifier'] = identifier
+            end
+
+            file = {'contents' => file_content.to_yaml, 'path' => 'home/occi.info'}
 
             personality = []
             personality << file
 
             options = {
-                "metadata" => {"test_key" => "value"},
-                "personality" => personality,
-                "adminPass" => "cloud4e"
+                "metadata"    => meta_data,
+            #    "personality" => personality,
+                "adminPass"   => 'cloud4e'
             }
 
             server = client.create_server compute.title, image_ref, flavor_id, options

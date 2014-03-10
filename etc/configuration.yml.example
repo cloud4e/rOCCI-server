@@ -1,0 +1,55 @@
+default:
+  amqp:
+    connection_setting:
+      host: localhost
+      port: 5672
+      password: demo
+      vhost: occi_server
+      user: occi_user
+
+    identifier: amqp.occi.http://localhost:9292/
+
+  occi:
+    amqp: false
+
+production:
+  amqp:
+    connection_setting:
+      host: localhost
+      port: 5672
+      password: demo
+      vhost: occi_server
+      user: occi_user
+
+    identifier: amqp.occi.http://localhost:9292/
+
+  occi:
+    amqp: false
+
+development:
+  amqp:
+    connection_setting:
+      host: localhost
+      port: 5672
+      password: demo
+      vhost: occi_server
+      user: occi_user
+
+    identifier: amqp.occi.http://localhost:9292/
+
+  occi:
+    amqp: false
+
+test:
+  amqp:
+    connection_setting:
+      host: localhost
+      port: 5672
+      password: demo
+      vhost: occi_server
+      user: occi_user
+
+    identifier: amqp.occi.http://localhost:9292/
+
+  occi:
+    amqp: false

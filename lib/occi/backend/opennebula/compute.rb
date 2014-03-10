@@ -149,17 +149,17 @@ module OCCI
             OCCI::Log.debug("Disk type #{disk['TYPE']}")
             OCCI::Log.debug disk.inspect
             case disk['TYPE'].downcase
-              when 'fs', 'swap'
-                offset  = 100000 # set an offset for OCCI ID generation to distinguish from Images
-                storage = OCCI::Core::Resource.new('http://schemas.ogf.org/occi/infrastructure#storage')
-                storage.mixins << 'http://opennebula.org/occi/infrastructure#storage'
-                storage.id = disk['STORAGE_OCCI_ID']
-                storage.id ||= self.generate_occi_id(@model.get_by_id(storage.kind), (id + offset).to_s)
+            when 'fs', 'swap'
+              offset  = 100000 # set an offset for OCCI ID generation to distinguish from Images
+              storage = OCCI::Core::Resource.new('http://schemas.ogf.org/occi/infrastructure#storage')
+              storage.mixins << 'http://opennebula.org/occi/infrastructure#storage'
+              storage.id = disk['STORAGE_OCCI_ID']
+              storage.id ||= self.generate_occi_id(@model.get_by_id(storage.kind), (id + offset).to_s)
 
-                storage.attributes.occi!.storage!.size              = disk['SIZE']
-                storage.attributes.org!.opennebula!.storage!.fstype = disk['FORMAT'] if disk['FORMAT']
-                @model.get_by_id(storage.kind).entities << storage
-              else
+              storage.attributes.occi!.storage!.size              = disk['SIZE']
+              storage.attributes.org!.opennebula!.storage!.fstype = disk['FORMAT'] if disk['FORMAT']
+              @model.get_by_id(storage.kind).entities << storage
+            else
             end
             OCCI::Log.debug("Storage Backend ID: #{id}")
             storage_kind     = @model.get_by_id('http://schemas.ogf.org/occi/infrastructure#storage')
@@ -255,11 +255,11 @@ module OCCI
           os_tpl = compute.mixins.select { |mixin|
             OCCI::Log.debug("Compute deploy found mixin: #{mixin}")
             if mixin.kind_of? String
-              @model.get_by_id(mixin).related_to? "http://schemas.ogf.org/occi/infrastructure#os_tpl"
-            else
-              mixin.related_to? "http://schemas.ogf.org/occi/infrastructure#os_tpl"
+              mixin = @model.get_by_id(mixin)
             end
-          }.first
+
+            mixin.related_to? "http://schemas.ogf.org/occi/infrastructure#os_tpl" if mixin
+          }.compact.first
 
           os_tpl = @model.get_by_id(os_tpl)
 
@@ -280,12 +280,12 @@ module OCCI
 
           if template
 
-	    if compute.attributes.occi.compute
+            if compute.attributes.occi.compute
               vcpu = compute.attributes.occi.compute.cores if compute.attributes.occi.compute.cores
               memory = (compute.attributes.occi.compute.memory.to_f * 1000).to_i if compute.attributes.occi.compute.memory
               architecture = compute.attributes.occi.compute.architecture if compute.attributes.occi.compute.architecture
               cpu = compute.attributes.occi.compute.speed if compute.attributes.occi.compute.speed
-	    end
+            end
 
             if vcpu
               template.delete_element('TEMPLATE/VCPU')

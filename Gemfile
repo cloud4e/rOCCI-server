@@ -12,16 +12,16 @@ gem "occi", "~> 2.5.12"
 #gem "occi", :path => "/Users/ffeldhaus/Development/rOCCI"
 gem "oca", "~> 3.4.0"
 
+# sinatra and related
+gem "sinatra", "~> 1.3.2"
+gem "sinatra-contrib", "~> 1.3.1"
+gem "sinatra-cross_origin", "~> 0.2.0"
+
 # occi_amqp
 gem "amqp"
 
 # fogio
 gem "fog"
-
-# sinatra and related
-gem "sinatra", "~> 1.3.2"
-gem "sinatra-contrib", "~> 1.3.1"
-gem "sinatra-cross_origin", "~> 0.2.0"
 
 # active gems
 gem "activesupport", "~> 3.2.14"
