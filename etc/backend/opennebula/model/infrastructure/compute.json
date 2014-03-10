@@ -30,11 +30,32 @@
                             },
                             "boot":{
                                 "Description":"boot device type: hd,fd,cdrom ,network"
+                            },
+                            "gid":{
+                                "Description":"group id of vm"
                             }
                         }
                     }
                 }
+            },
+            "actions":[
+                "http://schemas.ogf.org/occi/infrastructure/compute/action#chgrp"
+            ]
+        }
+    ], 
+    "actions":[
+        {
+            "term":"chgrp",
+            "scheme":"http://schemas.ogf.org/occi/infrastructure/compute/action#",
+            "title":"change gid of instance",
+            "attributes":{
+                "gid":{
+                    "Mutable":true,
+                    "Required":true,
+                    "Type":"string"
+                }
             }
         }
     ]
+    
 }
