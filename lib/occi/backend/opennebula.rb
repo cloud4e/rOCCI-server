@@ -34,7 +34,7 @@ module OCCI
       EXPIRE_MARGIN = 300
 
       attr_reader :model
-      attr_accessor :amqp_producer
+      attr_accessor :amqp_worker
 
       def self.kind_definition
         kind = OCCI::Core::Kind.new('http://rocci.info/server/backend#', 'opennebula')
@@ -423,7 +423,7 @@ module OCCI
                    end
                 end
 
-                @amqp_producer.send(message, options)
+                @amqp_worker.request(message, options)
                 links_waiting_for_reply << entity
           
              else
@@ -602,7 +602,7 @@ module OCCI
       def send_to_amqp(amqp_queue, resource, action, parameters)
         OCCI::Log.debug("Delegating action to amqp_queue: [#{amqp_queue}]")
 
-        if @amqp_producer
+        if @amqp_worker
           path = resource.location + "?action=" + parameters[:action]
 
           #alles ausser action und method
@@ -626,7 +626,7 @@ module OCCI
 
 
           message = collection.to_json
-          @amqp_producer.send(message, options)
+          @amqp_worker.request(message, options)
           test = test
         end
       end
@@ -652,7 +652,7 @@ module OCCI
         params.delete(:action)
         params.delete(:method)
 
-        raise "No Amqp Producer is set" unless @amqp_producer
+        raise "No Amqp Worker is set" unless @amqp_worker
 
         path = amqplink.location + "?action=" + action.term
 
@@ -673,7 +673,7 @@ module OCCI
         collection.actions << action
         message = collection.to_json
 
-        @amqp_producer.send(message, options)
+        @amqp_worker.request(message, options)
         #TODO vergiss nicht das occi 2.5.16 gem mit den änderungen an dem parser -> link rel actions source target
 
       end

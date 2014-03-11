@@ -25,7 +25,7 @@ module OCCI
         startAMQP standalone, identifier if !mock
       end
 
-      def startAMQP(standalone = false, identifier)
+      def startAMQP(standalone = false, identifier = Config.instance.amqp[:identifier])
         @worker =  OCCI::OCCI_AMQP::Worker.new
         @worker.start :queue_name => identifier, :callback => method(:handle_message)
         log("debug", __LINE__, "AMQP Connection ready")
@@ -99,6 +99,7 @@ module OCCI
             OCCI::Log.info ("Script: (#{ script_name }) Line: (#{ line }) OCCI/AMQP: #{ message }")
         end
       end
+
     end
   end
 end
