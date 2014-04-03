@@ -24,7 +24,8 @@ module OCCI
 
         def initialize()
           @model  = OCCI::Model.new
-
+          @num_registered=0
+          @links_registered=0
           if @@static_backend.nil?
 
             collection   = Hashie::Mash.new(JSON.parse(File.read(File.dirname(__FILE__) + "/../../../../etc/backend/default.json")))
@@ -83,6 +84,7 @@ module OCCI
           @backend.model.get_by_location(request.path_info) ? entity_type = @backend.model.get_by_location(request.path_info).entity_type : entity_type = OCCI::Core::Resource
           @request_locations, @request_collection = OCCI::Parser.parse(request.media_type, request.body, request.path_info.include?('/-/'), entity_type, request.env)
 
+
           OCCI::Log.debug("Locations: #{@request_locations}")
           OCCI::Log.debug("Collection: #{@request_collection.to_json.to_s}")
           OCCI::Log.debug('### Fill OCCI model with entities from backend ###')
@@ -124,6 +126,7 @@ module OCCI
         # @describe discovery interface and Resource retrieval - returns all kinds, mixins and actions registered for the server or returns entities either below a certain path or belonging to a certain kind or mixin
         # @param [OCCI::Frontend::Base::BaseRequest] request
         def get(request)
+          #@backend.register_existing_resources(@client)
           if request.path_info == "/-/" or request.path_info == "/.well-known/org/ogf/occi/-/"
             OCCI::Log.info("### Listing all kinds, mixins and actions ###")
             @collection = @backend.model.get(@request_collection)
@@ -140,7 +143,12 @@ module OCCI
 
               kinds.each do |kind|
                 OCCI::Log.info("### Listing all entities of kind #{kind.type_identifier} ###")
-                @collection.resources.concat kind.entities if kind.entity_type == OCCI::Core::Resource
+                if kind.entity_type == OCCI::Core::Resource                
+                  if request.accept.upcase!="TEXT/URI-LIST" 
+                    @backend.update_links_of_compute_resources(@client,kind.entities) 
+                  end 
+                  @collection.resources.concat kind.entities
+                end                
                 @collection.links.concat kind.entities if kind.entity_type == OCCI::Core::Link
                 @locations.concat kind.entities.collect { |entity| request.base_url + request.script_name + entity.location }
               end
@@ -190,7 +198,12 @@ module OCCI
               @backend.register_action(action)
             end
             @request_collection.mixins.each do |mixin|
+              #start = Time.now
+              @num_registered=@num_registered+1
+              #puts "registered mixin #{@num_registered} at #{Time.now}"
               @backend.register_mixin(mixin)
+              #finish = Time.now
+              #puts "time register mixin: #{finish-start}"
             end
           else
             OCCI::Log.debug('### POST request processing ...')
@@ -202,6 +215,8 @@ module OCCI
 
             # if action
             if params[:action]
+              #@backend.register_existing_resources(@client)
+              #puts "action triggered: #{Time.now}"
               OCCI::Log.debug("### Action #{params[:action]} triggered ...")
               action = nil
               if @request_collection.actions.any?
@@ -242,13 +257,21 @@ module OCCI
                   OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_LINK, link, true)
                 else
                   # otherwise store new one
+                  #@links_registered = @links_registered+1
+                  #puts "registered links #{@links_registered} at #{Time.now}"
                   OCCI::Log.debug("Link resource #{link.target} with #{link.source}")
+                  #start = Time.now
                   OCCI::Backend::Manager.signal_resource(@client, @backend, OCCI::Backend::RESOURCE_LINK, link)
-
+                  #finish = Time.now
+                  #puts "time register link: #{finish-start}"
                   @locations << request.base_url + request.script_name + link.location
                 end
                 @server.status 201
               end
+
+              #if @request_collection.resources.any?
+              #  @backend.register_existing_resources(@client)
+              #end
 
               @request_collection.resources.each do |resource|
                 kind = @backend.model.get_by_id category.type_identifier
@@ -300,6 +323,7 @@ module OCCI
 
         # @param [OCCI::Frontend::Base::BaseRequest] request
         def delete(request)
+          #@backend.register_existing_resources(@client)
           if request.path_info == "/-/" or request.path_info == "/.well-known/org/ogf/occi/-/"
             # Location references query interface => delete provided mixin
             raise "Mixin not found!" if @backend.model.get(@request_collection).mixins.nil?
