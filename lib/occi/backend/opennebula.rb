@@ -377,12 +377,10 @@ module OCCI
                 queue.delete
                 queue_tested=true
              end
-             Time.now
              #wait until we know if queue exists 
              while !queue_tested
                  sleep(0.001) 
              end
-             puts "time test queue: #{Time.now-start}"
 
              if queue_exists
                 channel2  = AMQP::Channel.new(connection)
