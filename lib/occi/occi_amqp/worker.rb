@@ -15,7 +15,7 @@ module OCCI
         channel = AMQP::Channel.new(connection)
         channel.on_error(&method(:handle_channel_exception))
 
-        @queue = channel.queue(options[:queue_name], :exclusive => true, :auto_delete => true)
+        @queue = channel.queue(options[:queue_name], :exclusive => false, :auto_delete => true)
         @queue.subscribe(&options[:callback])
 
         @exchange = channel.default_exchange

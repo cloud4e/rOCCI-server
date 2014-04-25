@@ -25,6 +25,7 @@ require 'rack'
 options = OCCI::Helper::OcciServerOptions.new
 options._parse ARGV
 
+fork do
 server = OCCI::Server.new().start(options.frontend, true)
 
 if options.frontend == 'http'
@@ -32,6 +33,39 @@ if options.frontend == 'http'
   Rack::Server.new(:app => server, :Port => 9292, :server => 'webrick').start
 end
 
+end
+
+fork do
+server = OCCI::Server.new().start(options.frontend, true)
+
+if options.frontend == 'http'
+  #TODO start inside Passenger
+  Rack::Server.new(:app => server, :Port => 9293, :server => 'webrick').start
+end
+
+end
+
+fork do
+server = OCCI::Server.new().start(options.frontend, true)
+
+if options.frontend == 'http'
+  #TODO start inside Passenger
+  Rack::Server.new(:app => server, :Port => 9294, :server => 'webrick').start
+end
+
+end
+
+fork do
+server = OCCI::Server.new().start(options.frontend, true)
+
+if options.frontend == 'http'
+  #TODO start inside Passenger
+  Rack::Server.new(:app => server, :Port => 9295, :server => 'webrick').start
+end
+
+end
+
+Process.wait
 
 
 
