@@ -284,17 +284,16 @@ module OCCI
 
       # ---------------------------------------------------------------------------------------------------------------------
       def register_existing_resources(client)
+        #start = Time.now
         # get all compute objects
         resource_template_register(client)
         os_template_register(client)
         compute_register_all_instances(client)
 
         entities = []
-
         @pstore.transaction(read_only=true) do
           entities = @pstore['links']
         end
-
         entities.each do |entity|          
           #Link zu seiner Resource hinzufügen
           add_actions_from_link(entity)
@@ -306,8 +305,8 @@ module OCCI
              OCCI::Log.debug("#### Number of entities in kind #{kind.type_identifier}: #{kind.entities.size}")
           end
         end
-        
-
+        #finish = Time.now
+        #puts "time register existing resources: #{finish-start}"
         #network_register_all_instances(client)
         #storage_register_all_instances(client)
       end
@@ -344,8 +343,11 @@ module OCCI
               links = @pstore['links']
            end
            links_of_resource=links.select {|link| link.source.rpartition('/').last == compute.id}
+           #links_of_resource.each do |link|
+           #  puts "update #{link.source}"
+           #end
            update_links(client,links_of_resource)            
-        end 
+        end
       end
 
       #------------------------------------------------------------------------------------------------
@@ -367,7 +369,7 @@ module OCCI
                 queue_tested=true
                 queue_exists=true 
              end
-          
+             start = Time.now  
              queue=channel.queue(queue_name)          
              #the block is only executed if queue did not already exist, otherwise an error occurs 
              queue.status do |num_messages, num_consumers|            
@@ -375,10 +377,12 @@ module OCCI
                 queue.delete
                 queue_tested=true
              end
-
+             Time.now
              #wait until we know if queue exists 
              while !queue_tested
+                 sleep(0.001) 
              end
+             puts "time test queue: #{Time.now-start}"
 
              if queue_exists
                 channel2  = AMQP::Channel.new(connection)
@@ -422,10 +426,8 @@ module OCCI
                       puts e.backtrace
                    end
                 end
-
                 @amqp_worker.request(message, options)
                 links_waiting_for_reply << entity
-          
              else
                 #Link zu seiner Resource hinzufügen
                 #add_actions_from_link(entity)
@@ -443,8 +445,8 @@ module OCCI
         timeout=3
         while !(links_waiting_for_reply.empty?) && timeout>0
            sleep(0.1)
-           timeout=timeout-1
-        end 
+           timeout=timeout-0.1
+        end
         if !(links_waiting_for_reply.empty?)
             OCCI::Log.warn("Failed to update one or more links - timeout exceeded")
             #links_waiting_for_reply.each do |entity|
