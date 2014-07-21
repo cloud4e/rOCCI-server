@@ -78,18 +78,18 @@ module OCCI
             compute.attributes.occi!.compute!.cores = flavor.attributes[:vcpus]
             compute.attributes.occi!.compute!.memory = flavor.attributes[:ram]
 
-            compute.attributes.org!.openstack!.compute!.ephemeral   = flavor.attributes[:ephemeral]
-            compute.attributes.org!.openstack!.compute!.flavor_id   = flavor.attributes[:id]
-            compute.attributes.org!.openstack!.compute!.image_id    = backend_object.attributes[:image]["id"]
-            compute.attributes.org!.openstack!.compute!.task_state  = backend_object.attributes[:os_ext_sts_task_state] if !backend_object.attributes[:os_ext_sts_task_state].nil?
+            compute.attributes.org!.openstack!.compute!.ephemeral = flavor.attributes[:ephemeral]
+            compute.attributes.org!.openstack!.compute!.flavor_id = flavor.attributes[:id]
+            compute.attributes.org!.openstack!.compute!.image_id = backend_object.attributes[:image]["id"]
+            compute.attributes.org!.openstack!.compute!.task_state = backend_object.attributes[:os_ext_sts_task_state] if !backend_object.attributes[:os_ext_sts_task_state].nil?
             compute.attributes.org!.openstack!.compute!.power_state = backend_object.attributes[:os_ext_sts_power_state]
-            compute.attributes.org!.openstack!.compute!.created     = backend_object.attributes[:created].to_s
-            compute.attributes.org!.openstack!.compute!.updated     = backend_object.attributes[:updated].to_s
-            compute.attributes.org!.openstack!.compute!.accessIPv4  = backend_object.attributes[:accessIPv4].to_s if backend_object.attributes[:accessIPv4].to_s.length > 0
-            compute.attributes.org!.openstack!.compute!.accessIPv6  = backend_object.attributes[:accessIPv6].to_s if backend_object.attributes[:accessIPv6].to_s.length > 0
+            compute.attributes.org!.openstack!.compute!.created = backend_object.attributes[:created].to_s
+            compute.attributes.org!.openstack!.compute!.updated = backend_object.attributes[:updated].to_s
+            compute.attributes.org!.openstack!.compute!.accessIPv4 = backend_object.attributes[:accessIPv4].to_s if backend_object.attributes[:accessIPv4].to_s.length > 0
+            compute.attributes.org!.openstack!.compute!.accessIPv6 = backend_object.attributes[:accessIPv6].to_s if backend_object.attributes[:accessIPv6].to_s.length > 0
 
             unless backend_object.attributes[:addresses]['fixed'].nil?
-              compute.attributes.org!.openstack!.compute!.fixedIP     = backend_object.attributes[:addresses]['fixed'][0]['addr'].to_s unless backend_object.attributes[:addresses]['fixed'].empty?
+              compute.attributes.org!.openstack!.compute!.fixedIP = backend_object.attributes[:addresses]['fixed'][0]['addr'].to_s unless backend_object.attributes[:addresses]['fixed'].empty?
             end
 
 
@@ -121,9 +121,9 @@ module OCCI
                 attribute = compute.attributes.send "#{attribute_keys.delete_at(0)}!"
                 last = attribute_keys.delete_at(-1)
 
-                attribute_keys.each {|attribute_key| attribute = attribute.send "#{attribute_key}!"}
+                attribute_keys.each { |attribute_key| attribute = attribute.send "#{attribute_key}!" }
 
-                attribute.send "#{last}=" ,value
+                attribute.send "#{last}=", value
               end
             end
           end
@@ -136,19 +136,19 @@ module OCCI
             case backend_state
               when "active" then
                 compute.attributes.occi!.compute!.state = "active"
-                compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#stop http://schemas.ogf.org/occi/infrastructure/compute/action#restart http://schemas.ogf.org/occi/infrastructure/compute/action#suspend|
+                compute.actions = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#stop http://schemas.ogf.org/occi/infrastructure/compute/action#restart http://schemas.ogf.org/occi/infrastructure/compute/action#suspend|
               when "build", "deleted", "hard_reboot", "password", "reboot", "rebuild", "rescue", "resize", "revert_resize", "shutoff", "verify_resize" then
                 compute.attributes.occi!.compute!.state = "inactive"
-                compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#restart|
+                compute.actions = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#restart|
               when "suspend" then
                 compute.attributes.occi!.compute!.state = "suspended"
-                compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
+                compute.actions = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
               when "error" then
                 compute.attributes.occi!.compute!.state = "error"
-                compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
+                compute.actions = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
               else
                 compute.attributes.occi!.compute!.state = "inactive"
-                compute.actions                         = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
+                compute.actions = %w|http://schemas.ogf.org/occi/infrastructure/compute/action#start|
             end
           end
 
@@ -169,7 +169,7 @@ module OCCI
             image_ref = options[:default_image]
             flavor_id = 2
 
-            if(!simulation_id.nil? && simulation_id.to_s.length > 0)
+            if (!simulation_id.nil? && simulation_id.to_s.length > 0)
               image_ref = simulation_id
             end
 
@@ -182,7 +182,7 @@ module OCCI
                 :storage_endpoint => storage_endpoint,
                 :endpoint => Config.instance.amqp[:identifier].split('amqp.occi.').last
             }
-            meta_data    = {'occi_attribute_occi.core.id' => compute.id.to_s}
+            meta_data = {'occi_attribute_occi.core.id' => compute.id.to_s}
 
             if compute.attributes.cloud4e!.service!.simulation!.identifier
               identifier = compute.attributes.cloud4e!.service!.simulation!.identifier
@@ -196,9 +196,10 @@ module OCCI
             personality << file
 
             options = {
-                "metadata"    => meta_data,
-            #    "personality" => personality,
-                "adminPass"   => 'cloud4e'
+                "metadata" => meta_data,
+                #    "personality" => personality,
+                "user_data" => Base64.encode64(file_content.to_yaml),
+                "adminPass" => 'cloud4e'
             }
 
             server = client.create_server compute.title, image_ref, flavor_id, options
